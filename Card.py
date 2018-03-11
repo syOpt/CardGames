@@ -1,4 +1,5 @@
 from enum import Enum, unique
+import colorama
 import Macro
 
 @unique
@@ -20,9 +21,11 @@ class Card:
             assert(st == None or st == Suit.none)
         self.rank = rk
         self.suit = st
-        self.color = Macro.FOREGROUND_DARKWHITE
+        self.color = colorama.Fore.WHITE
+        #self.color = Macro.FOREGROUND_DARKWHITE
         if self.suit == Suit.heart or self.suit == Suit.diamond:
-            self.color = Macro.FOREGROUND_DARKRED
+            self.color = colorama.Fore.RED
+            #self.color = Macro.FOREGROUND_DARKRED
 
     def __str__(self):
         return SuitDict[self.suit] + RankDict[self.rank]
