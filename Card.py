@@ -9,6 +9,9 @@ class Suit(Enum):
     spade = 3
     none = 4
 
+SuitDict = {Suit.heart:chr(Macro.ASCII_HEART), Suit.diamond:chr(Macro.ASCII_DIAMOND), Suit.club:chr(Macro.ASCII_CLUB), Suit.spade:chr(Macro.ASCII_SPADE), Suit.none:' '}
+RankDict = {1:'A', 2:'2', 3:'3', 4:'4', 5:'5', 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'J', 12:'Q', 13:'K', 14:'Joker-', 15:'Joker+'}
+
 class Card:
     def __init__(self, rk, st = None):
         assert(type(rk) == type(0) and rk > 0 and rk < 16)
@@ -22,8 +25,6 @@ class Card:
             self.color = Macro.FOREGROUND_DARKRED
 
     def __str__(self):
-        SuitDict = {Suit.heart:chr(3), Suit.diamond:chr(4), Suit.club:chr(5), Suit.spade:chr(6), Suit.none:' '}
-        RankDict = {1:'A', 2:'2', 3:'3', 4:'4', 5:'5', 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'J', 12:'Q', 13:'K', 14:'Joker-', 15:'Joker+'}
         return SuitDict[self.suit] + RankDict[self.rank]
 
     def __cmp__(self, rhs):
