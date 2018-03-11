@@ -22,17 +22,7 @@ def setCmdTextColor(color):
 
 class FreeCellCard(Card.Card):
     def __init__(self, rk ,st):
-        Card.Card.__init__(self)
-
-    def cmdShow(self, color = None):
-        chars = self.__str__()
-        if color == None:
-            color = self.color
-        setCmdTextColor(color)
-        sys.stdout.write(chars)
-        sys.stdout.flush()
-        setCmdTextColor(Macro.FOREGROUND_DARKWHITE)
-        return self
+        Card.Card.__init__(self, rk, st)
 
 
 class FreeCellDeck(Card.Deck):
@@ -61,31 +51,19 @@ class FreeCellDeck(Card.Deck):
             self.table.append(col)
             p += INITIAL_NUM[i]
 
-    def cmdShow(self):
-        os.system('echo off')
-        os.system('cls')
-        i = 0
-        finish = False
-        while not finish:
-            finish = True
-            for j in range(COLOMN):
-                if len(self.table[j]) > i:
-                    finish = False
-                    self.table[j][i].cmdShow()
-                    sys.stdout.write('\t')
-            i += 1
-            sys.stdout.write('\n')    
 
 class FrameManager():
     def __init__(self):
         self.deck = FreeCellDeck()
+        self.promote = ''
 
     def __del__(self):
         os.system('echo on')
 
     def mainLoop(self):
         os.system('echo off')
-        self.cmdShow()
+        self.promote = 'ready'
+        self.show('cmd')
         exits = False
         while not exits:
             ch = getCh()
@@ -99,8 +77,41 @@ class FrameManager():
         else:
             return False
 
-    def cmdShow(self):
-        pass
+    def show(self, dest):
+        if dest == 'cmd':
+            self.cmdShowDeck()
+            self.cmdShowPromote()
+        else:
+            pass
+
+    def cmdShowCard(self, cd, color = None):
+        chars = cd.__str__()
+        if color == None:
+            color = cd.color
+        setCmdTextColor(color)
+        sys.stdout.write(chars)
+        sys.stdout.flush()
+        setCmdTextColor(Macro.FOREGROUND_DARKWHITE)
+        return self
+
+    def cmdShowDeck(self):
+        os.system('cls')
+        i = 0
+        finish = False
+        while not finish:
+            finish = True
+            for j in range(COLOMN):
+                if len(self.deck.table[j]) > i:
+                    finish = False
+                    self.cmdShowCard(self.deck.table[j][i])
+                    sys.stdout.write('\t')
+            i += 1
+            sys.stdout.write('\n')   
+
+    def cmdShowPromote(self):
+        setCmdTextColor(Macro.FOREGROUND_DARKWHITE)
+        sys.stdout.write('\n' + self.promote)
+        setCmdTextColor(Macro.FOREGROUND_DARKWHITE)
 
 if __name__ == '__main__':
     game = FrameManager()
