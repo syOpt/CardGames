@@ -404,7 +404,7 @@ class FrameManager():
                 else:
                     self.__promote = "Cannot operate."
             else:
-                if self.__deck.sX == None:
+                if self.__deck.sX == None or self.__deck.cells[self.__deck.sX] == None:
                     self.__promote = "Cannot operate: no card is selected."
                 else:
                     rk = self.__deck.cells[self.__deck.sX].rank
@@ -422,7 +422,7 @@ class FrameManager():
             if self.__numOutputLineCount > self.__maxOutputLineCount:
                 self.__maxOutputLineCount = self.__numOutputLineCount
             else:
-                for i in range(self.__maxOutputLineCount - self.__numOutputLineCount):
+                for i in range(self.__maxOutputLineCount - self.__numOutputLineCount + 1):
                     print(' ' * self.__WINDOWWIDTH + '\n')
             
         else:
