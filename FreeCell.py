@@ -283,12 +283,11 @@ class FrameManager():
         lenPromote = len(self.__promote)
         lenMenu = len(MENU)
         numSpaces = lineWidth - lenPromote
-        self.__outputString += (colorama.Style.RESET_ALL + ' ' * lineWidth +'\n' + self.__promote + ' ' * numSpaces)
-        self.__outputString += (' ' * lineWidth + '\n')
+        self.__outputString += (colorama.Style.RESET_ALL + ' ' * lineWidth +'\n' + self.__promote + ' ' * numSpaces + '\n')
         self.__outputString += (' ' * lineWidth + '\n')
         numSpaces = lineWidth - lenMenu
         self.__outputString += (MENU + ' ' * numSpaces + '\n')
-        self.__numOutputLineCount += 3
+        self.__numOutputLineCount += 4
 
     def __freeUp(self):
         if self.__deck.toMoveX == None:
@@ -416,14 +415,18 @@ class FrameManager():
     def __show(self):
         if self.__mode == 'cmd':
             self.__outputString = colorama.Style.RESET_ALL
+            print('\x1b[1A' * (self.__numOutputLineCount+1) + '\x1b[2K'+'\r')
+            self.__numOutputLineCount = 0
             self.__cmdShowDeck()
             self.__cmdShowPromote()
-            print('\x1b[1A' * self.__numOutputLineCount + '\x1b[2K'+'\r' + self.__outputString)
             if self.__numOutputLineCount > self.__maxOutputLineCount:
                 self.__maxOutputLineCount = self.__numOutputLineCount
             else:
-                for i in range(self.__maxOutputLineCount - self.__numOutputLineCount + 1):
-                    print(' ' * self.__WINDOWWIDTH + '\n')
+                for i in range(self.__maxOutputLineCount - self.__numOutputLineCount):
+                    self.__outputString += (' ' * self.__WINDOWWIDTH)
+                    self.__numOutputLineCount += 1
+            self.__numOutputLineCount += 1
+            print(self.__outputString)
             
         else:
             pass
