@@ -130,7 +130,9 @@ class FrameManager():
             if z == 1:
                 return True
             else:
-                if y == len(self.__deck.table[x]) - 1:
+                if len(self.__deck.table[x]) == 0:
+                    return False
+                elif y == len(self.__deck.table[x]) - 1:
                     return True
                 else:
                     if self.__deck.table[x][y].color == self.__deck.table[x][y+1].color or not self.__deck.table[x][y].rank == self.__deck.table[x][y+1].rank + 1:
