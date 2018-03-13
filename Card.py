@@ -17,15 +17,15 @@ class Card:
     def __init__(self, rk, st = None):
         assert(type(rk) == type(0) and rk > 0 and rk < 16)
         assert(st == None or type(st) == type(Suit(0)))
+        if st == None:
+            st = Suit.none
         if rk > 13:
-            assert(st == None or st == Suit.none)
+            assert(st == Suit.none)
         self.rank = rk
         self.suit = st
         self.color = colorama.Fore.WHITE
-        #self.color = Macro.FOREGROUND_DARKWHITE
         if self.suit == Suit.heart or self.suit == Suit.diamond:
             self.color = colorama.Fore.RED
-            #self.color = Macro.FOREGROUND_DARKRED
 
     def __str__(self):
         return SuitDict[self.suit] + RankDict[self.rank]
