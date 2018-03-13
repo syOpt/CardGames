@@ -1,5 +1,5 @@
 import colorama
-import os, msvcrt, console, time
+import os, msvcrt, console, time, random
 import Macro, Card
 from CmdGameFrame import CmdGameFrameManager
 colorama.init(autoreset = False)
@@ -44,6 +44,7 @@ def getCh():
 class FreeCellCard(Card.Card):
     def __init__(self, rk ,st):
         Card.Card.__init__(self, rk, st)
+
 
 
 class FreeCellDeck(Card.Deck):
@@ -138,11 +139,11 @@ class FreeCellDeck(Card.Deck):
         else:
             assert x >= 0 and x < CELL
 
-    def checkMoveable(self, toX, coord):
-        if not self.checkChooseable(coord):
+    def checkMoveable(self, toX, coord, checkedChooseablility = False):
+        if not checkedChooseablility and not self.checkChooseable(coord):
             return False
         x, y, z = coord
-        self.__checkToMoveX()
+        self.__checkToMoveX(toX)
         cd = None
         if z == 0:
             cd = self.__table[x][y]
@@ -218,6 +219,35 @@ class FreeCellDeck(Card.Deck):
     def getFinishedPileTop(self, i):
         assert type(i) == type(0) and i >= 0 and i < PILES
         return self.__finished[i]
+
+    def getNextPossibleStep(self):
+        ret = []
+        for x in range(COLUMN):
+            y = len(self.__table[x]) - 1
+            deprt = [x, y, 0]
+            if y >= 0 and self.checkPileUpAble(tuple(deprt)):
+                ret.append((tuple(deprt), self.pileUp, None))
+            if y >= 0 and self.checkFreeUpAble(tuple(deprt)):
+                ret.append((tuple(deprt), self.freeUp, None))
+            while y >= 0 and self.checkChooseable(tuple(deprt)):
+                y -= 1
+                deprt = [x, y, 0]
+            y += 1
+            deprt = [x, y, 0]
+            while y < self.getColumnLength(x):
+                for dest in range(COLUMN):
+                    if self.checkMoveable(dest, tuple(deprt), True):
+                        ret.append((tuple(deprt), self.move, dest))
+                y += 1
+                deprt = [x, y, 0]
+        for x in range(CELL):
+            deprt = [x, 0, 1]
+            if self.checkPileUpAble(tuple(deprt)):
+                ret.append((tuple(deprt), self.pileUp, None))
+            for dest in range(COLUMN):
+                if self.checkMoveable(dest, tuple(deprt)):
+                    ret.append((tuple(deprt), self.move, dest))
+        return ret
 
     def getSX(self):
         return self.__sX
@@ -368,8 +398,6 @@ class FreeCellFrameManager(CmdGameFrameManager):
                 status = (IO_ERROR, err)
             #except Exception as err:
                 #status = (RUNTIME_ERROR, err)
-            finally:
-                pass
         if not status[0] == NORMAL_EXIT:
             self.__promote = status[1].__str__()
             self.__show()
@@ -519,8 +547,29 @@ class FreeCellFrameManager(CmdGameFrameManager):
             else:
                 self.__promote = "Cannot operate."
 
-    def __getNextStep(self):
-        pass
+    def __getHint(self):
+        hints = self.__deck.getNextPossibleStep()
+        numHints = len(hints)
+        if numHints > 0:
+            indexHint = random.randrange(0, numHints)
+            deprt, method, args = hints[indexHint]
+            if method == self.__deck.pileUp:
+                cd = self.__deck.getCard(deprt)
+                self.__promote = "Pile up " + cd.color + cd.__str__() + colorama.Style.RESET_ALL
+            elif method == self.__deck.freeUp:
+                cd = self.__deck.getCard(deprt)
+                self.__promote = "Free " + cd.color + cd.__str__() + colorama.Style.RESET_ALL
+            elif method == self.__deck.move:
+                self.__promote = "Move "
+                x, y, z = deprt
+                while y < self.__deck.getColumnLength(x):
+                    cd = self.__deck.getCard((x, y, z))
+                    self.__promote += (cd.color + cd.__str__() + colorama.Style.RESET_ALL)
+                    y += 1
+                self.__promote += (" to column " + str(args + 1))
+            self.__promote += " (%d / %d)" %(indexHint + 1, numHints)
+        else:
+            self.__promote = "Nowhere to go..."
 
     def __moveLR(self, ch):
         # move selection to the left or the right
@@ -591,7 +640,8 @@ class FreeCellFrameManager(CmdGameFrameManager):
         return (NORMAL_OPERATE, "")
 
     def __onH(self, ch):
-        pass
+        self.__getHint()
+        self.__show()
         return (NORMAL_OPERATE, "")
 
     def __onLeftRight(self, ch):
