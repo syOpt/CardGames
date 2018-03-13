@@ -1,13 +1,21 @@
 import colorama
 import os, msvcrt, console, time
 import Macro, Card
+from CmdGameFrame import CmdGameFrameManager
 colorama.init(autoreset = False)
 
 COLOMN = 8
 CELL = 4
 PILES = 4
 INITIAL_NUM = (7, 7, 7, 7, 6, 6, 6, 6)
-MENU = 'F1/H: help\tE: exit'
+MENU = 'F1/H: help\tEsc/Q: quit'
+# Error codes
+NORMAL_OPERATE = 0
+NORMAL_EXIT = 1
+RUNTIME_ERROR = 2
+IO_ERROR = 3
+ASSERTION_ERROR = 4
+# assertions
 assert len(INITIAL_NUM) == COLOMN
 assert CELL == 4
 assert PILES == 4
@@ -56,8 +64,9 @@ class FreeCellDeck(Card.Deck):
             p += INITIAL_NUM[i]
 
 
-class FrameManager():
+class FreeCellFrameManager(CmdGameFrameManager):
     def __init__(self, mode = 'cmd'):
+        CmdGameFrameManager.__init__(self)
         self.__mode = mode
         self.__deck = FreeCellDeck()
         self.__outputString = ""
@@ -65,47 +74,64 @@ class FrameManager():
         self.__maxOutputLineCount = 0
         self.__WINDOWWIDTH = 56
         self.__promote = ""
-
-    def __del__(self):
-        os.system('echo on')
+        self.__keyFuncDict = None
+        self.__defaultKeyFuncDict = {Macro.KEYCODE_LEFTARROW: self.__onLeftRight,
+                                     Macro.KEYCODE_RIGHTARROW: self.__onLeftRight,
+                                     Macro.KEYCODE_UPARROW: self.__onUpDown,
+                                     Macro.KEYCODE_DOWNARROW: self.__onUpDown,
+                                     Macro.KEYCODE_ENTER: self.__onEnter,
+                                     Macro.KEYCODE_SPACE: self.__onSpace,
+                                     Macro.KEYCODE_F: self.__onF,
+                                     Macro.KEYCODE_H: self.__onH,
+                                     Macro.KEYCODE_Q: self.__onQ,
+                                     Macro.KEYCODE_S: self.__onS,
+                                     Macro.KEYCODE_CAPITAL_F: self.__onF,
+                                     Macro.KEYCODE_CAPITAL_H: self.__onH,
+                                     Macro.KEYCODE_CAPITAL_Q: self.__onQ,
+                                     Macro.KEYCODE_CAPITAL_S: self.__onS,
+                                     Macro.KEYCODE_CTRL_N: self.__onCtrl_N,
+                                     Macro.KEYCODE_CTRL_Z: self.__onCtrl_Z,
+                                     Macro.KEYCODE_F1: self.__onF1,
+                                     Macro.KEYCODE_F2: self.__onF2,
+                                     Macro.KEYCODE_F5: self.__onF5,
+                                     Macro.KEYCODE_ESC: self.__onEsc,
+        }
+        self.__setKeyFuncDict(self.__defaultKeyFuncDict)
 
     def mainLoop(self):
-        os.system('echo off')
         os.system('cls')
         self.__promote = "Ready."
         self.__show()
-        exits = False
-        while not exits:
-            ch = getCh()
-            if self.__checkExit(ch):
-                # to exit
-                exits = True
-            elif ch == Macro.KEYCODE_LEFTARROW or ch == Macro.KEYCODE_RIGHTARROW:
-                self.__moveLR(ch)
-                self.__checksXYZ()
-                self.__show()
-            elif ch == Macro.KEYCODE_UPARROW or ch == Macro.KEYCODE_DOWNARROW:
-                self.__moveUP(ch)
-                self.__checksXYZ()
-                self.__show()
-            elif ch == Macro.KEYCODE_SPACE:
-                self.__chooseOrMove()
-                self.__show()
-            elif ch == Macro.KEYCODE_ENTER:
-                self.__pileUp()
-                self.__show()
-            elif ch == Macro.KEYCODE_F or ch == Macro.KEYCODE_CAPITAL_F:
-                self.__freeUp()
-                self.__show()
-            elif ch == Macro.KEYCODE_F1 or ch == Macro.KEYCODE_CAPITAL_H or ch == Macro.KEYCODE_H:
-                self.__promote = self.__getHelp()
+        status = (NORMAL_OPERATE, "")
+        while status[0] == NORMAL_OPERATE:
+            try:
+                ch = getCh()
+                if ch in self.__keyFuncDict.keys():
+                    status = self.__keyFuncDict[ch](ch)
+                    assert type(status) == type((NORMAL_OPERATE, "")) and len(status) == 2
+            except AssertionError as err:
+                status = (ASSERTION_ERROR, err)
+            except IOError as err:
+                status = (IO_ERROR, err)
+            except Exception as err:
+                status = (RUNTIME_ERROR, err)
+            finally:
+                pass
+        if not status[0] == NORMAL_EXIT:
+            self.__promote = status[1]
+            self.__show()
 
     def __autoComplete(self):
         pass
 
+    def __checkAndExit(self):
+        return self.__ensure("Sure to exit?", "Exit...", "Ready.")
+
     def __checkAndPileUp(self, rk, st):
+        ret = None
         if not self.__deck.finished[st] == rk - 1:
             self.__promote = "Cannot operate."
+            ret = False
         else:
             # move to finished piles
             self.__deck.finished[st] += 1
@@ -115,13 +141,8 @@ class FrameManager():
             else:
                 self.__deck.cells[self.__deck.sX] = None
             self.__promote = "Piled up."
-
-    def __checkExit(self, ch):
-        exitKeys = (Macro.KEYCODE_E, Macro.KEYCODE_Q, Macro.KEYCODE_CAPITAL_E, Macro.KEYCODE_CAPITAL_Q)
-        if ch in exitKeys:
-            return True
-        else:
-            return False
+            ret = True
+        return ret
 
     def __checkChooseable(self, x, y, z):
         if x == None or y == None or z == None:
@@ -165,15 +186,6 @@ class FrameManager():
                 ret = False
         return ret
 
-    def __checksXYZ(self):
-        assert self.__deck.sZ == 0 or self.__deck.sZ == 1
-        if self.__deck.sZ == 0:
-            assert self.__deck.sX >= 0 and self.__deck.sX < COLOMN
-            if len(self.__deck.table[self.__deck.sX]) > 0:
-                assert self.__deck.sY >= 0 and self.__deck.sY < len(self.__deck.table[self.__deck.sX])
-        else:
-            assert self.__deck.sX >= 0 and self.__deck.sX < CELL
-
     def __checkSelected(self, z, x, y):
         ret = False
         if self.__deck.sZ == z and self.__deck.sX == x:
@@ -183,6 +195,26 @@ class FrameManager():
                 if y >= self.__deck.sY:
                     ret = True
         return ret
+
+    def __checksXYZ(self):
+        assert self.__deck.sZ == 0 or self.__deck.sZ == 1
+        if self.__deck.sZ == 0:
+            assert self.__deck.sX >= 0 and self.__deck.sX < COLOMN
+            if len(self.__deck.table[self.__deck.sX]) > 0:
+                assert self.__deck.sY >= 0 and self.__deck.sY < len(self.__deck.table[self.__deck.sX])
+        else:
+            assert self.__deck.sX >= 0 and self.__deck.sX < CELL
+
+    def __checkYesNo(self):
+        yesKeys = (Macro.KEYCODE_CAPITAL_Y, Macro.KEYCODE_Y)
+        noKeys = (Macro.KEYCODE_CAPITAL_N, Macro.KEYCODE_N)
+        ch = getCh()
+        while not (ch in yesKeys or ch in noKeys):
+            ch = getCh()
+        if ch in yesKeys:
+            return True
+        else:
+            return False
 
     def __chooseOrMove(self):
         if self.__deck.toMoveX == None:
@@ -291,6 +323,28 @@ class FrameManager():
         self.__outputString += (MENU + ' ' * numSpaces + '\n')
         self.__numOutputLineCount += 4
 
+    def __debug(self):
+        self.__deck = FreeCellDeck()
+        x, y = 0, 0
+        for i in range(13, 0, -1):
+            for j in range(4):
+                if x == COLOMN:
+                    x, y = 0, y+1
+                self.__deck.table[x][y] = FreeCellCard(i, Card.Suit(j))
+                x += 1
+        self.__show()
+
+    def __ensure(self, prmtOnEnsure, prmtOnYes, prmtOnNo):
+        self.__promote = prmtOnEnsure + " (Y/N)"
+        self.__show()
+        ret = self.__checkYesNo()
+        if ret:
+            self.__promote = prmtOnYes
+        else:
+            self.__promote = prmtOnNo
+        self.__show()
+        return ret
+
     def __freeUp(self):
         if self.__deck.toMoveX == None:
             if self.__deck.sZ == None:
@@ -298,7 +352,7 @@ class FrameManager():
             elif self.__deck.sZ == 0:
                 if self.__deck.sX == None:
                     self.__promote = "Cannot operate: no card is selected."
-                elif self.__deck.sY == None:
+                elif self.__deck.sY == None or self.__deck.sY < 0:
                     self.__promote = "Cannot operate: no card is selected."
                 elif self.__deck.sY == len(self.__deck.table[self.__deck.sX]) - 1:
                     numEmptycell = self.__deck.cells.count(None)
@@ -318,7 +372,7 @@ class FrameManager():
         else:
             self.__promote = "Cannot operate: need to finish current movement first."
 
-    def __getHelp(self):
+    def __getNextStep(self):
         pass
 
     def __moveLR(self, ch):
@@ -389,6 +443,82 @@ class FrameManager():
         else:
             pass
 
+    def __newGame(self):
+        if self.__ensure("Start a new game?", "New Game.", "Ready."):
+            self.__deck = FreeCellDeck()
+            self.__show()
+        else:
+            pass
+
+    def __onCtrl_N(self, ch):
+        self.__newGame()
+        return (NORMAL_OPERATE, "")
+
+    def __onCtrl_Z(self, ch):
+        self.__recall()
+        self.__show()
+        return (NORMAL_OPERATE, "")
+
+    def __onEnter(self, ch):
+        self.__pileUp()
+        self.__show()
+        return (NORMAL_OPERATE, "")
+
+    def __onEsc(self, ch):
+        if self.__checkAndExit():
+            return (NORMAL_EXIT, "")
+        else:
+            return (NORMAL_OPERATE, "")
+
+    def __onF(self, ch):
+        self.__freeUp()
+        self.__show()
+        return (NORMAL_OPERATE, "")
+
+    def __onF1(self, ch):
+        pass
+        return (NORMAL_OPERATE, "")
+
+    def __onF2(self, ch):
+        self.__restart()
+        return (NORMAL_OPERATE, "")
+
+    def __onF5(self, ch):
+        self.__debug()
+        return (NORMAL_OPERATE, "")
+
+    def __onH(self, ch):
+        pass
+        return (NORMAL_OPERATE, "")
+
+    def __onLeftRight(self, ch):
+        self.__moveLR(ch)
+        self.__checksXYZ()
+        self.__show()
+        return (NORMAL_OPERATE, "")
+
+    def __onQ(self, ch):
+        if self.__checkAndExit():
+            return (NORMAL_EXIT, "")
+        else:
+            return (NORMAL_OPERATE, "")
+
+    def __onS(self, ch):
+        # do settings
+        pass
+        return (NORMAL_OPERATE, "")
+
+    def __onSpace(self, ch):
+        self.__chooseOrMove()
+        self.__show()
+        return (NORMAL_OPERATE, "")
+
+    def __onUpDown(self, ch):
+        self.__moveUP(ch)
+        self.__checksXYZ()
+        self.__show()
+        return (NORMAL_OPERATE, "")
+
     def __pileUp(self):
         if self.__deck.toMoveX == None:
             if self.__deck.sZ == None:
@@ -401,31 +531,46 @@ class FrameManager():
                 elif len(self.__deck.table[self.__deck.sX]) > 0 and self.__deck.sY == len(self.__deck.table[self.__deck.sX]) - 1:  
                     rk = self.__deck.table[self.__deck.sX][self.__deck.sY].rank
                     st = self.__deck.table[self.__deck.sX][self.__deck.sY].suit.value
-                    self.__checkAndPileUp(rk, st)
+                    #self.__checkAndPileUp(rk, st)
+                    if not self.__checkAndPileUp(rk, st):
+                        self.__chooseOrMove()
                 else:
-                    self.__promote = "Cannot operate."
+                    self.__chooseOrMove()
+                    #self.__promote = "Cannot operate."
             else:
                 if self.__deck.sX == None or self.__deck.cells[self.__deck.sX] == None:
                     self.__promote = "Cannot operate: no card is selected."
                 else:
                     rk = self.__deck.cells[self.__deck.sX].rank
                     st = self.__deck.cells[self.__deck.sX].suit.value
-                    self.__checkAndPileUp(rk, st)
+                    #self.__checkAndPileUp(rk, st)
+                    if not self.__checkAndPileUp(rk, st):
+                        self.__chooseOrMove()
         else:
-            self.__promote = "Cannot operate: need to finish current movement first."
+            self.__chooseOrMove()
+            #self.__promote = "Cannot operate: need to finish current movement first."
+
+    def __recall(self):
+        pass
+
+    def __restart(self):
+        pass
+
+    def __setKeyFuncDict(self, dict):
+        self.__keyFuncDict = dict
 
     def __show(self):
         if self.__mode == 'cmd':
             self.__outputString = colorama.Style.RESET_ALL
-            print('\x1b[1A' * (self.__numOutputLineCount+1) + '\x1b[2K'+'\r')
-            self.__numOutputLineCount = 0
+            print('\x1b[1A' * self.__numOutputLineCount + '\x1b[2K'+'\r')
+            self.__numOutputLineCount = 1
             self.__cmdShowDeck()
             self.__cmdShowPromote()
             if self.__numOutputLineCount > self.__maxOutputLineCount:
                 self.__maxOutputLineCount = self.__numOutputLineCount
             else:
                 for i in range(self.__maxOutputLineCount - self.__numOutputLineCount):
-                    self.__outputString += (' ' * self.__WINDOWWIDTH)
+                    self.__outputString += (' ' * self.__WINDOWWIDTH + '\n')
                     self.__numOutputLineCount += 1
             self.__numOutputLineCount += 1
             print(self.__outputString)
@@ -435,6 +580,6 @@ class FrameManager():
 
 
 if __name__ == '__main__':
-    game = FrameManager()
+    game = FreeCellFrameManager()
     game.mainLoop()
     
