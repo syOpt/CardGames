@@ -1,8 +1,9 @@
 import colorama
 import os, msvcrt, console, time, random
 import Macro, Card
-from CmdGameFrame import CmdGameFrameManager
+from CmdGameFrame import CmdGameFrameManager, RetType
 colorama.init(autoreset = False)
+
 
 COLUMN = 8
 CELL = 4
@@ -12,17 +13,6 @@ MENU = 'F1/H: help\tEsc/Q: quit'
 EMPTY_SYMBOL = '*'
 SEPERATOR = '- - '
 TOP_MID_SYMBOL = 'FreeCell'
-# direction
-LEFT = (-1, 0)
-RIGHT = (1, 0)
-UP = (0, -1)
-DOWN = (0, 1)
-# Error codes
-NORMAL_OPERATE = 0
-NORMAL_EXIT = 1
-RUNTIME_ERROR = 2
-IO_ERROR = 3
-ASSERTION_ERROR = 4
 # assertions
 assert len(INITIAL_NUM) == COLUMN
 assert CELL == 4
@@ -39,6 +29,7 @@ def getCh():
         return x                    # return cooked scancode
     else:
         return a                    # else return ascii code
+
 
 
 class FreeCellCard(Card.Card):
@@ -73,57 +64,92 @@ class FreeCellDeck(Card.Deck):
             p += INITIAL_NUM[i]
 
     def checkPileUpAble(self, coord):
-        self.__checkCoord(coord)
-        x, y, z = coord
-        ret = True
-        if z == 0 and (y < 0 or y < len(self.__table[x]) - 1):
-            ret = False
-        else:
-            cd = None
-            if z == 0:
-                cd = self.__table[x][y]
+        ret = RetType(RetType.TRUE, "")
+        try:
+            self.__checkCoord(coord)
+            x, y, z = coord
+            if z == 0 and (y < 0 or y < len(self.__table[x]) - 1):
+                ret.setFalse()
+                ret.setMessage("exactly one card can be piled up once")
             else:
-                cd = self.__cells[x]
+                cd = None
+                if z == 0:
+                    cd = self.__table[x][y]
+                else:
+                    cd = self.__cells[x]
                 if cd == None:
-                    return False
-            st = cd.suit.value
-            rk = cd.rank
-            if not self.__finished[st] == rk - 1:
-                ret = False
-        return ret
+                    ret.setFalse()
+                    ret.setMessage("no card selected")
+                else:
+                    st = cd.suit.value
+                    rk = cd.rank
+                    if not self.__finished[st] == rk - 1:
+                        ret.setFalse()
+                        msg = cd.color + FreeCellCard(rk - 1, st).__str__() + colorama.Style.RESET_ALL + " has to be piled up first"
+                        ret.setMessage(msg)
+        except AssertionError as err:
+            ret.setFalse()
+            ret.exitMsg(err.__str__())
+            raise err
+        finally:
+            return ret
 
     def checkChooseable(self, coord):
-        self.__checkCoord(coord)
-        x, y, z = coord
-        if z == 1 and not self.__cells[x] == None:
-            return True
-        else:
-            if len(self.__table[x]) == 0:
-                return False
-            elif y == len(self.__table[x]) - 1:
-                return True
-            else:
-                if self.__table[x][y].color == self.__table[x][y+1].color or not self.__table[x][y].rank == self.__table[x][y+1].rank + 1:
-                    return False
+        ret = RetType(RetType.TRUE, "")
+        try:
+            self.__checkCoord(coord)
+            x, y, z = coord
+            if z == 1:
+                if self.__cells[x] == None:
+                    ret.setFalse()
+                    ret.setMessage("no card can be selected")
                 else:
-                    return self.checkChooseable((x, y + 1, z))
+                    pass
+            else:
+                if len(self.__table[x]) == 0:
+                    ret.setFalse()
+                    ret.setMessage("no card can be selected in an empty column")
+                elif y == len(self.__table[x]) - 1:
+                    pass
+                else:
+                    if self.__table[x][y].color == self.__table[x][y+1].color or not self.__table[x][y].rank == self.__table[x][y+1].rank + 1:
+                        ret.setFalse()
+                        ret.setMessage("only cards with contiguous ranks and alternant colors can be selected once")
+                    else:
+                        return self.checkChooseable((x, y + 1, z))
+        except AssertionError as err:
+            ret.setFalse()
+            ret.exitMsg(str(err))
+            raise err
+        finally:
+            return ret
     
     def checkFreeUpAble(self, coord):
-        self.__checkCoord(coord)
-        x, y, z = coord
-        if z == 1:
-            return False
-        else:
-            if len(self.__table[x]) == 0:
-                return False
-            elif not y == len(self.__table[x]) - 1:
-                return False
+        ret = RetType(RetType.TRUE, "")
+        try:
+            self.__checkCoord(coord)
+            x, y, z = coord
+            if z == 1:
+                ret.setFalse()
+                ret.setMessage("the card has already been freed")
             else:
-                numEmptycell = self.__cells.count(None)
-                if numEmptycell == 0:
-                    return False
+                if len(self.__table[x]) == 0:
+                    ret.setFalse()
+                    ret.setMessage("no card can be moved in an empty column")
+                elif not y == len(self.__table[x]) - 1:
+                    ret.setFalse()
+                    ret.setMessage("exactly one card can be freed once")
                 else:
-                    return True
+                    numEmptycell = self.__cells.count(None)
+                    if numEmptycell == 0:
+                        ret.setFalse()
+                        ret.setMessage("no vacant position left")
+        except AssertionError as err:
+            ret.setFalse()
+            ret.exitMsg(err.__str__())
+            raise err
+        finally:
+            return ret
 
     def __checkCoord(self, coord):
         '''
@@ -140,55 +166,67 @@ class FreeCellDeck(Card.Deck):
             assert x >= 0 and x < CELL
 
     def checkMoveable(self, toX, coord, checkedChooseablility = False):
-        if not checkedChooseablility and not self.checkChooseable(coord):
-            return False
-        x, y, z = coord
-        self.__checkToMoveX(toX)
-        cd = None
-        if z == 0:
-            cd = self.__table[x][y]
-        else:
-            cd = self.__cells[x]
-        ret = True
-        if not len(self.__table[toX]) == 0 and (self.__table[toX][-1].color == cd.color or not self.__table[toX][-1].rank - 1 == cd.rank):
-            ret = False
-        else:
-            numEmptyCol = 0
-            for i in range(COLUMN):
-                if len(self.__table[i]) == 0:
-                    numEmptyCol += 1
-            if len(self.__table[toX]) == 0:
-                numEmptyCol -= 1
-            numEmptyCell = self.__cells.count(None)
-            numMaxMove = (numEmptyCell + 1) * (numEmptyCol + 1)
-            numToMove = 1    # corresponds to the case of self.__sZ = 1
-            if z == 0:
-                numToMove = len(self.__table[x]) - y
-            if numToMove > numMaxMove:
-                ret = False
-        return ret
+        ret = RetType(RetType.TRUE, "")
+        try:
+            if not checkedChooseablility:
+                ret = self.checkChooseable(coord)
+            if ret:
+                x, y, z = coord
+                self.__checkToMoveX(toX)
+                cd = None
+                if z == 0:
+                    cd = self.__table[x][y]
+                else:
+                    cd = self.__cells[x]
+                if cd == None:
+                    ret.setFalse()
+                    ret.setMessage("no card is selected")
+                elif not self.getColumnLength(toX) == 0 and (self.__table[toX][-1].color == cd.color or not self.__table[toX][-1].rank - 1 == cd.rank):
+                    ret.setFalse()
+                    ret.setMessage("card (or cards) can be moved either to an empty column or underneath a destination card, in the latter situation, the color of the card (or the top one of the cards) must be different from the destination card, and the rank must be exactly one smaller")
+                else:
+                    numEmptyCol = 0
+                    for i in range(COLUMN):
+                        if len(self.__table[i]) == 0:
+                            numEmptyCol += 1
+                    if len(self.__table[toX]) == 0:
+                        numEmptyCol -= 1
+                    numEmptyCell = self.__cells.count(None)
+                    numMaxMove = (numEmptyCell + 1) * (numEmptyCol + 1)
+                    numToMove = 1    # corresponds to the case of self.__sZ = 1
+                    if z == 0:
+                        numToMove = len(self.__table[x]) - y
+                    if numToMove > numMaxMove:
+                        ret.setFalse()
+                        ret.setMessage("at most %d cards can be moved at present" %(numMaxMove))
+        except AssertionError as err:
+            ret.setFalse()
+            ret.exitMsg(err.__str__())
+            raise err
+        finally:
+            return ret
 
     def checkSelected(self, z, x, y):
-        ret = False
+        ret = RetType(RetType.FALSE, "")
         if self.__sZ == z and self.__sX == x:
             if z == 1:
-                ret = True
+                ret.setTrue()
             else:
                 if y >= self.__sY:
-                    ret = True
+                    ret.setTrue()
         return ret
 
     def __checksXYZ(self):
         self.__checkCoord(self.currentSXYZ())
 
     def __checkToMoveX(self, x = None):
+        ret = RetType(RetType.TRUE, "")
         if x == None:
             x = self.__toMoveX
-        assert(type(x) == type(0))
+        assert type(x) == type(0), "illegal column index"
         if x < 0 or x > COLUMN:
-            return False
-        else:
-            return True
+            ret.setFalse()
+        return ret
 
     def currentSXYZ(self):
         return (self.__sX, self.__sY, self.__sZ)
@@ -201,27 +239,29 @@ class FreeCellDeck(Card.Deck):
         self.__sY -= 1
         if self.__sY < 0:
             self.__sY = 0
+        return self
 
     def getCard(self, coord):
         self.__checkCoord(coord)
         x, y, z = coord
         if z == 0 and len(self.__table[x]) == 0:
-            raise AssertionError("Illegal coordinate of card.")
+            raise AssertionError("illegal coordinate of card")
         if z == 0:
             return self.__table[x][y]
         else:
             return self.__cells[x]
 
     def getColumnLength(self, j):
-        assert type(j) == type(0) and j >= 0 and j <= COLUMN
+        assert type(j) == type(0) and j >= 0 and j <= COLUMN, "illegal column index"
         return len(self.__table[j])
 
     def getFinishedPileTop(self, i):
-        assert type(i) == type(0) and i >= 0 and i < PILES
+        assert type(i) == type(0) and i >= 0 and i < PILES, "illegal pile index"
         return self.__finished[i]
 
     def getNextPossibleStep(self):
         ret = []
+        # search in the table
         for x in range(COLUMN):
             y = len(self.__table[x]) - 1
             deprt = [x, y, 0]
@@ -240,6 +280,7 @@ class FreeCellDeck(Card.Deck):
                         ret.append((tuple(deprt), self.move, dest))
                 y += 1
                 deprt = [x, y, 0]
+        # search in cells
         for x in range(CELL):
             deprt = [x, 0, 1]
             if self.checkPileUpAble(tuple(deprt)):
@@ -266,61 +307,68 @@ class FreeCellDeck(Card.Deck):
         self.__sX = self.__toMoveX
         self.__sY = len(self.__table[self.__sX]) - 1
         self.setToMoveX(None)
+        return self
 
     def moveSXYZ(self, direc):
-        legalDirec = (LEFT, RIGHT, UP, DOWN)
+        legalDirec = (Macro.DIRECTION_LEFT, Macro.DIRECTION_RIGHT, Macro.DIRECTION_UP, Macro.DIRECTION_DOWN)
         assert direc in legalDirec
+        # if the current sX, sY, or sZ is not legal, set them legal
         try:
             self.__checksXYZ()
         except AssertionError:
             self.__sZ = 0
             self.__sX = int(COLUMN / 2)
             self.__sY = len(self.__table[self.__sX]) - 1
+
         if self.__sZ == 0:
-            if direc == LEFT:
+            if direc == Macro.DIRECTION_LEFT:
                 self.__sX -= 1
                 self.__sX %= COLUMN
                 self.__sY = len(self.__table[self.__sX]) - 1
-            elif direc == RIGHT:
+            elif direc == Macro.DIRECTION_RIGHT:
                 self.__sX += 1
                 self.__sX %= COLUMN
                 self.__sY = len(self.__table[self.__sX]) - 1
-            elif direc == UP:
+            elif direc == Macro.DIRECTION_UP:
                 self.__sY -= 1
                 if self.__sY < 0:
                     self.__sZ = 1
                     if self.__sX >= CELL:
                         self.__sX = CELL - 1
                     self.__sY = 0
-            elif direc == DOWN:
+            elif direc == Macro.DIRECTION_DOWN:
                 self.__sY += 1
                 if self.__sY >= len(self.__table[self.__sX]):
                     self.__sY = len(self.__table[self.__sX]) - 1
         else:
             self.__sY = 0
-            if direc == LEFT:
+            if direc == Macro.DIRECTION_LEFT:
                 self.__sX -= 1
                 self.__sX %= CELL
-            elif direc == RIGHT:
+            elif direc == Macro.DIRECTION_RIGHT:
                 self.__sX += 1
                 self.__sX %= CELL
-            elif direc == DOWN:
+            elif direc == Macro.DIRECTION_DOWN:
                 self.__sZ = 0
                 self.__sY = len(self.__table[self.__sX]) - 1
+        return self
 
     def moveToMoveX(self, direc):
-        legalDirec = (LEFT, RIGHT)
+        legalDirec = (Macro.DIRECTION_LEFT, Macro.DIRECTION_RIGHT)
         assert direc in legalDirec
+        # if the current toMoveX is not legal, set them legal
         try:
             self.__checkToMoveX()
         except AssertionError:
             self.__toMoveX = 0
-        if direc == LEFT:
+        
+        if direc == Macro.DIRECTION_LEFT:
             self.__toMoveX -= 1
             self.__toMoveX %= COLUMN
-        elif direc == RIGHT:
+        elif direc == Macro.DIRECTION_RIGHT:
             self.__toMoveX += 1
             self.__toMoveX %= COLUMN
+        return self
 
     def isMoving(self):
         if self.__toMoveX == None:
@@ -337,11 +385,13 @@ class FreeCellDeck(Card.Deck):
             st = self.__cells[self.__sX].suit.value
             self.__cells[self.__sX] = None
         self.__finished[st] += 1
+        return self
 
     def setToMoveX(self, x):
         if not x == None:
             self.__checkToMoveX(x)
         self.__toMoveX = x
+        return self
 
 
 
@@ -385,21 +435,19 @@ class FreeCellFrameManager(CmdGameFrameManager):
         os.system('cls')
         self.__promote = "Ready."
         self.__show()
-        status = (NORMAL_OPERATE, "")
-        while status[0] == NORMAL_OPERATE:
+        status = RetType()
+        while status.normalOp():
             try:
                 ch = getCh()
                 if ch in self.__keyFuncDict.keys():
                     status = self.__keyFuncDict[ch](ch)
-                    assert type(status) == type((NORMAL_OPERATE, "")) and len(status) == 2
+                    assert type(status) == type(RetType())
             except AssertionError as err:
-                status = (ASSERTION_ERROR, err)
+                status = RetType(RetType.ASSERTION_ERROR, err.__str__())
             except IOError as err:
-                status = (IO_ERROR, err)
-            #except Exception as err:
-                #status = (RUNTIME_ERROR, err)
-        if not status[0] == NORMAL_EXIT:
-            self.__promote = status[1].__str__()
+                status = RetType(RetType.IO_ERROR, err.__str__())
+        if not status.normalExit():
+            self.__promote = status
             self.__show()
 
     def __autoComplete(self):
@@ -421,16 +469,18 @@ class FreeCellFrameManager(CmdGameFrameManager):
 
     def __chooseOrMove(self):
         if self.__deck.isMoving():
-            if self.__deck.checkMoveable(self.__deck.getToMoveX(), self.__deck.currentSXYZ()):
+            retCheck = self.__deck.checkMoveable(self.__deck.getToMoveX(), self.__deck.currentSXYZ())
+            if retCheck:
                 self.__deck.move()
             else:
-                self.__promote = "Cannot move."
+                self.__promote = "Cannot move: " + str(retCheck) + "."
             self.__deck.setToMoveX(None)
         else:
-            if self.__deck.checkChooseable(self.__deck.currentSXYZ()):
+            retCheck = self.__deck.checkChooseable(self.__deck.currentSXYZ())
+            if retCheck:
                 self.__deck.setToMoveX(self.__deck.getSX())
             else:
-                self.__promote = "Cannot choose."
+                self.__promote = "Cannot choose: " + str(retCheck) + "."
             
     def __cmdShowCardFormatted(self, cd, totalLength, selected = False, color = None):
         length = 0
@@ -504,17 +554,32 @@ class FreeCellFrameManager(CmdGameFrameManager):
             self.__outputString += '\n'
             self.__numOutputLineCount += 1
 
+    def __cmdShowMenu(self):
+        lineWidth = self.WINDOWWIDTH
+        lenMenu = len(MENU)
+        numSpaces = lineWidth - lenMenu
+        # show menu
+        self.__outputString += (' ' * lineWidth + '\n' + MENU + ' ' * numSpaces + '\n')
+        self.__numOutputLineCount += 2
+
     def __cmdShowPromote(self):
         lineWidth = self.WINDOWWIDTH
         lenPromote = len(self.__promote)
-        lenMenu = len(MENU)
-        numSpaces = lineWidth - lenPromote
-        self.__outputString += (colorama.Style.RESET_ALL + ' ' * lineWidth +'\n' + self.__promote + ' ' * numSpaces + '\n')
-        self.__outputString += (' ' * lineWidth + '\n')
-        numSpaces = lineWidth - lenMenu
-        self.__outputString += (MENU + ' ' * numSpaces + '\n')
-        self.__numOutputLineCount += 4
-
+        numSpaces = lineWidth - lenPromote % lineWidth
+        
+        self.__outputString += (colorama.Style.RESET_ALL + ' ' * lineWidth +'\n')
+        self.__numOutputLineCount += 1
+        # show promote
+        i = -1
+        for i in range(int(lenPromote / lineWidth)):
+             self.__outputString += (self.__promote[i*lineWidth : (i+1)*lineWidth] + '\n')
+             self.__numOutputLineCount += 1
+        self.__outputString += (self.__promote[(i+1)*lineWidth : lenPromote] + ' ' * numSpaces + '\n')
+        self.__numOutputLineCount += 1
+        # self.__numOutputLineCount += int(lenPromote / lineWidth)
+        # if lenPromote % lineWidth == 0:
+        #     self.__numOutputLineCount -= 1
+        
     def __debug(self):
         self.__deck = FreeCellDeck()
         x, y = 0, 0
@@ -562,10 +627,14 @@ class FreeCellFrameManager(CmdGameFrameManager):
             elif method == self.__deck.move:
                 self.__promote = "Move "
                 x, y, z = deprt
-                while y < self.__deck.getColumnLength(x):
+                if z == 0:
+                    while y < self.__deck.getColumnLength(x):
+                        cd = self.__deck.getCard((x, y, z))
+                        self.__promote += (cd.color + cd.__str__() + colorama.Style.RESET_ALL)
+                        y += 1
+                else:
                     cd = self.__deck.getCard((x, y, z))
                     self.__promote += (cd.color + cd.__str__() + colorama.Style.RESET_ALL)
-                    y += 1
                 self.__promote += (" to column " + str(args + 1))
             self.__promote += " (%d / %d)" %(indexHint + 1, numHints)
         else:
@@ -573,10 +642,10 @@ class FreeCellFrameManager(CmdGameFrameManager):
 
     def __moveLR(self, ch):
         # move selection to the left or the right
-        direc = RIGHT
+        direc = Macro.DIRECTION_RIGHT
         self.__promote = "Pressed " + chr(Macro.ASCII_RIGHTARROW) + "."
         if ch == Macro.KEYCODE_LEFTARROW:
-            direc = LEFT
+            direc = Macro.DIRECTION_LEFT
             self.__promote = "Pressed " + chr(Macro.ASCII_LEFTARROW) + "."
         if self.__deck.isMoving():
             self.__deck.moveToMoveX(direc)
@@ -585,10 +654,10 @@ class FreeCellFrameManager(CmdGameFrameManager):
 
     def __moveUD(self, ch):
         # move selection up or down
-        direc = DOWN
+        direc = Macro.DIRECTION_DOWN
         self.__promote = "Pressed " + chr(Macro.ASCII_DOWNARROW) + "."
         if ch == Macro.KEYCODE_UPARROW:
-            direc = UP
+            direc = Macro.DIRECTION_UP
             self.__promote = "Pressed " + chr(Macro.ASCII_UPARROW) + "."
         if self.__deck.isMoving():
             pass
@@ -604,71 +673,71 @@ class FreeCellFrameManager(CmdGameFrameManager):
 
     def __onCtrl_N(self, ch):
         self.__newGame()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onCtrl_Z(self, ch):
         self.__recall()
         self.__show()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onEnter(self, ch):
         self.__pileUp()
         self.__show()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onEsc(self, ch):
         if self.__checkAndExit():
-            return (NORMAL_EXIT, "")
+            return RetType(RetType.NORMAL_EXIT, "")
         else:
-            return (NORMAL_OPERATE, "")
+            return RetType()
 
     def __onF(self, ch):
         self.__freeUp()
         self.__show()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onF1(self, ch):
         pass
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onF2(self, ch):
         self.__restart()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onF5(self, ch):
         self.__debug()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onH(self, ch):
         self.__getHint()
         self.__show()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onLeftRight(self, ch):
         self.__moveLR(ch)
         self.__show()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onQ(self, ch):
         if self.__checkAndExit():
-            return (NORMAL_EXIT, "")
+            return RetType(RetType.NORMAL_EXIT, "")
         else:
-            return (NORMAL_OPERATE, "")
+            return RetType()
 
     def __onS(self, ch):
         # do settings
         pass
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onSpace(self, ch):
         self.__chooseOrMove()
         self.__show()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __onUpDown(self, ch):
         self.__moveUD(ch)
         self.__show()
-        return (NORMAL_OPERATE, "")
+        return RetType()
 
     def __pileUp(self):
         if self.__deck.isMoving():
@@ -695,6 +764,7 @@ class FreeCellFrameManager(CmdGameFrameManager):
             self.__numOutputLineCount = 1
             self.__cmdShowDeck()
             self.__cmdShowPromote()
+            self.__cmdShowMenu()
             if self.__numOutputLineCount > self.__maxOutputLineCount:
                 self.__maxOutputLineCount = self.__numOutputLineCount
             else:
